@@ -82,10 +82,11 @@ exports.handleMessage = async (bot, msg) => {
 // 🎵 SONG SEARCH
 exports.handleSong = async (bot, msg) => {
     const chatId = msg.chat.id;
-    const text = msg.text.replace("/song", "").trim();
+    const text = msg.text.replace("/Ritik", "").trim();
+    console.log("Song command received:", text);
 
     if (!text) {
-        return bot.sendMessage(chatId, "Use: /song <name> 🎵");
+        return bot.sendMessage(chatId, "Use: /Ritik <name> 🎵");
     }
 
     try {

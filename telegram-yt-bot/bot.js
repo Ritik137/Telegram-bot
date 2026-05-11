@@ -28,7 +28,7 @@ bot.onText(/\/start/, (msg) => {
 📜 Track your search history  
 
 👉 Type:
-/song <name> to start
+/Ritik <name> to start
 
 or use /help 🚀
     `,
@@ -69,7 +69,7 @@ bot.on("contact", async (msg) => {
 
   await user.save();
 
-  bot.sendMessage(msg.chat.id, "✅ Setup complete! Now use /song 🎵", {
+  bot.sendMessage(msg.chat.id, "✅ Setup complete! Now use /Ritik 🎵", {
     reply_markup: { remove_keyboard: true },
   });
 });
@@ -85,7 +85,7 @@ bot.on("message", (msg) => {
   if (text.startsWith("/start") || text.startsWith("/help")) return;
 
   if (text === "Skip ⏭️") {
-    return bot.sendMessage(chatId, "👍 You can use all features!\nUse /song 🎵", {
+    return bot.sendMessage(chatId, "👍 You can use all features!\nUse /Ritik 🎵", {
       reply_markup: { remove_keyboard: true },
     });
   }
@@ -93,19 +93,30 @@ bot.on("message", (msg) => {
   if (text === "/history") {
     return botController.handleHistory(bot, msg);
   }
+if (text.startsWith("/play")) {
+  return;
+}
 
-  if (text.startsWith("/song")) {
-    return botController.handleSong(bot, msg);
-  }
+if (text.startsWith("/stop")) {
+  return;
+}
+  // if (text.startsWith("/Ritik")) {
+  //   console.log("Song command received:", text);
+  //   return botController.handleSong(bot, msg);
+  // }
+  if (text.startsWith("/Ritik")) {
+  console.log("Calling handleSong");
+  return botController.handleSong(bot, msg);
+}
 
   if (/youtube\.com|youtu\.be/.test(text)) {
     return botController.handleMessage(bot, msg);
   }
 
-  bot.sendMessage(chatId, "Use /song <name> 🎵");
+  bot.sendMessage(chatId, "Use /Ritik <name> 🎵");
 });
 
-/* ================= CALLBACK ================= */
+
 bot.on("callback_query", async (query) => {
   const chatId = query.message.chat.id;
   const [type, ...rest] = query.data.split("|");
@@ -122,12 +133,8 @@ bot.on("callback_query", async (query) => {
     return bot.sendMessage(chatId, "Invalid request ❌");
   }
 
-  const filePath = path.join(
-    __dirname,
-    `temp_${Date.now()}.${type === "audio" ? "m4a" : "mp4"}`
-  );
-
-  let fileStream;
+  const ext = type === "audio" ? "m4a" : "mp4";
+  const filePath = path.join(__dirname, `temp_${Date.now()}.${ext}`);
 
   try {
     await bot.sendMessage(chatId, "⬇️ Downloading...");
@@ -135,53 +142,64 @@ bot.on("callback_query", async (query) => {
     await ytDlp(url, {
       format:
         type === "audio"
-          ? "bestaudio[ext=m4a]"
-          : "best[ext=mp4][height<=360]",
+          ? "bestaudio[ext=m4a]/bestaudio"
+          : "bestvideo[ext=mp4][height<=360]+bestaudio[ext=m4a]/best[ext=mp4][height<=360]/best[height<=360]/best",
       output: filePath,
+      // // ✅ audio ko mp3 mein convert karo
+      // ...(type === "audio" && {
+      //   extractAudio: true,
+      //   audioFormat: "mp3",
+      //   audioQuality: "5",
+      // }),
+      ffmpegLocation: path.join(__dirname, "ffmpeg", "bin"),
+      mergeOutputFormat: type === "video" ? "mp4" : undefined,
       noPlaylist: true,
-      quiet: true,
     });
 
+    // ✅ File exist check
+    if (!fs.existsSync(filePath)) {
+      return bot.sendMessage(chatId, "❌ Download failed, file not found");
+    }
+
     const { size } = fs.statSync(filePath);
-    const maxSize = 49 * 1024 * 1024; // Telegram limit is 50MB
+    const maxSize = 49 * 1024 * 1024;
+
     if (size > maxSize) {
-      await bot.sendMessage(chatId, "⚠️ File is too large to upload. Try a shorter video or audio.");
-      return;
+      fs.unlink(filePath, () => {});
+      return bot.sendMessage(
+        chatId,
+        "⚠️ File too large (>49MB). Try a shorter video."
+      );
     }
 
     await bot.sendMessage(chatId, "📤 Uploading...");
 
-    const sendOptions = {
-      caption: type === "audio" ? "🎧 Audio ready" : "🎬 Video ready",
-      filename: path.basename(filePath),
-      contentType: type === "audio" ? "audio/m4a" : "video/mp4",
-      supports_streaming: type !== "audio",
-    };
-
-    // ✅ STREAM USE (IMPORTANT)
-    const stream = fs.createReadStream(filePath);
-
     if (type === "audio") {
-      await bot.sendAudio(chatId, stream, sendOptions);
+      // ✅ Audio: file path directly (stream nahi)
+      await bot.sendAudio(chatId, filePath, {
+        caption: "🎧 Audio ready",
+      });
     } else {
-      await bot.sendVideo(chatId, stream, sendOptions);
+      // ✅ Video: file path directly (stream nahi) — YE MAIN FIX HAI
+      await bot.sendVideo(chatId, filePath, {
+        caption: "🎬 Video ready",
+        supports_streaming: true,
+      });
     }
 
-    // ✅ DELAY DELETE (IMPORTANT)
+  } catch (err) {
+    console.error("❌ Error:", err.message);
+    await bot.sendMessage(chatId, `❌ Error: ${err.message.slice(0, 100)}`);
+  } finally {
+    // ✅ Upload COMPLETE hone ke baad delete — safe delay ke saath
     setTimeout(() => {
       if (fs.existsSync(filePath)) {
-        fs.unlink(filePath, () => console.log("Deleted"));
+        fs.unlink(filePath, () => console.log("🗑️ Deleted:", filePath));
       }
-    }, 5000);
-  } catch (err) {
-    console.error(err);
-    bot.sendMessage(chatId, "Error ❌");
-  } finally {
-    if (fs.existsSync(filePath)) {
-      fs.unlink(filePath, () => console.log("Deleted"));
-    }
+    }, 10000);
   }
 });
+
 
 /* ================= HELP ================= */
 bot.onText(/\/help/, (msg) => {
@@ -192,7 +210,7 @@ bot.onText(/\/help/, (msg) => {
     `
 🤖 *Bot Features Guide*
 
-🎵 /song <name>
+🎵 /Ritik <name>
 → Search and download songs
 
 📎 Send YouTube Link
